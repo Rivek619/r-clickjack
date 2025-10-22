@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>R-Clickjacking POC</title>
+  <!-- Hacker-style monospace font -->
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#0b0f0a;--card:#071006;--accent:#39ff14;--muted:#7be57a}
+    body{margin:0;font-family:'Fira Code',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;background:linear-gradient(180deg,var(--bg),#031006);color:#cfeed1}
+    .wrap{max-width:980px;margin:28px auto;padding:22px;background:linear-gradient(180deg,rgba(255,255,255,0.01),rgba(0,0,0,0.02));border-radius:12px;box-shadow:0 6px 24px rgba(2,6,23,0.6)}
+    h1{margin:0 0 8px;font-size:22px;color:var(--accent);letter-spacing:1px}
+    p.desc{margin:0 0 16px;color:var(--muted)}
+    form{display:flex;gap:8px;align-items:center}
+    input[type=text]{flex:1;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+    button{padding:10px 14px;border-radius:8px;border:none;background:var(--accent);color:#001100;font-weight:700;cursor:pointer}
+    .result{margin-top:14px;padding:12px;border-radius:8px;background:rgba(57,255,20,0.03);min-height:44px;border:1px solid rgba(57,255,20,0.06)}
+    .iframe-wrap{position:relative;margin-top:18px;height:520px;border-radius:8px;overflow:hidden;border:1px solid rgba(57,255,20,0.06)}
+    iframe#targetFrame{position:absolute;inset:0;width:100%;height:100%;border:0;opacity:0.98;background:#000}
+    .overlay-btn{position:absolute;right:24px;bottom:24px;z-index:9999;background:#39ff14;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;border:none}
+    footer{margin-top:12px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;align-items:center}
+    a.social{color:var(--accent);text-decoration:none;font-weight:700}
+    code{background:rgba(255,255,255,0.02);padding:2px 6px;border-radius:4px}
+    .title-badge{display:inline-block;padding:6px 10px;background:rgba(57,255,20,0.06);border-radius:6px;border:1px solid rgba(57,255,20,0.06);color:var(--accent);font-weight:700}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>R-Clickjacking POC <span class="title-badge">101</span></h1>
+    <p class="desc">Enter a domain or URL and press <strong>Check</strong>. This tool will attempt to embed the target in an <code>&lt;iframe&gt;</code> and detect whether the site blocks framing (via <code>X-Frame-Options</code> / <code>Content-Security-Policy</code>).</p>
+
+    <form id="checker">
+      <input id="url" type="text" placeholder="https://example.com or example.com" aria-label="URL" required>
+      <button type="submit">Check</button>
+    </form>
+
+    <div class="result" id="result">Status: waiting for input.</div>
+
+    <div class="iframe-wrap" id="frameWrap" style="display:none">
+      <iframe id="targetFrame" src="about:blank" title="target-frame" sandbox="" ></iframe>
+      <button class="overlay-btn" id="overlayBtn" title="Demo overlay (no automated clicking)">Click Here</button>
+    </div>
+
+    <footer>
+      <div><strong>Ethics:</strong> Only test hosts you own or have explicit permission to test.</div>
+      <div><a class="social" href="https://www.linkedin.com/in/rivektamang/" target="_blank" rel="noopener noreferrer">LinkedIn: Rivek Tamang</a></div>
+    </footer>
+  </div>
+
+  <script>
+    (function(){
+      const form = document.getElementById('checker');
+      const input = document.getElementById('url');
+      const result = document.getElementById('result');
+      const frameWrap = document.getElementById('frameWrap');
+      const iframe = document.getElementById('targetFrame');
+      const overlayBtn = document.getElementById('overlayBtn');
+
+      function normalize(inputUrl){
+        try{
+          if(!/^https?:\/\//i.test(inputUrl)){
+            inputUrl = 'https://' + inputUrl;
+          }
+          const u = new URL(inputUrl);
+          return u.href;
+        }catch(e){
+          return null;
+        }
+      }
+
+      function setStatus(txt){ result.textContent = 'Status: ' + txt; }
+
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        setStatus('preparing...');
+        const raw = input.value.trim();
+        const target = normalize(raw);
+        if(!target){ setStatus('invalid URL.'); return; }
+
+        frameWrap.style.display = 'block';
+        iframe.removeAttribute('sandbox');
+        iframe.src = target;
+
+        setStatus('embedded. waiting for load event...');
+
+        let loaded = false;
+        const onLoad = ()=>{ loaded = true; analyze(); };
+        iframe.addEventListener('load', onLoad, {once:true});
+
+        setTimeout(()=>{
+          if(!loaded){ analyze(); }
+        }, 6000);
+
+        function analyze(){
+          try{
+            const href = iframe.contentWindow.location.href;
+            if(href === 'about:blank'){
+              setStatus('blocked: the target refused to be framed (likely X-Frame-Options or CSP frame-ancestors).');
+            }else{
+              setStatus('embedded and accessible (same-origin) — framing possible.');
+            }
+          }catch(err){
+            setStatus('framing succeeded: the target is embedded.');
+          }
+        }
+      });
+
+      overlayBtn.addEventListener('click', ()=>{
+        alert('Clickjacked! — this simulates a UI element over the framed site.');
+      });
+
+    })();
+  </script>
+</body>
+</html>
